@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16212B">
+<title>金屬重量計算</title>
+<style>
+:root{
+  --bg:#E8EBED; --surface:#FFFFFF; --ink:#16212B; --muted:#5B6874; --line:#C9D0D6;
+  --accent:#0F5C8A; --accent-ink:#FFFFFF; --panel:#16212B; --panel-ink:#F3F5F6; --num:#F2B134; --err:#B3261E;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F161C; --surface:#1A242D; --ink:#E8ECEF; --muted:#93A0AB; --line:#2C3944;
+    --accent:#5DB1E3; --accent-ink:#0F161C; --panel:#0A1015; --panel-ink:#E8ECEF; --num:#F2B134; --err:#FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F161C; --surface:#1A242D; --ink:#E8ECEF; --muted:#93A0AB; --line:#2C3944;
+  --accent:#5DB1E3; --accent-ink:#0F161C; --panel:#0A1015; --panel-ink:#E8ECEF; --num:#F2B134; --err:#FF8A80;
+  color-scheme: dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  font-size:17px;line-height:1.5;-webkit-text-size-adjust:100%}
+main{max-width:480px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;margin:4px 0 16px;font-weight:700;letter-spacing:.02em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:14px;color:var(--muted);margin:0 0 6px}
+.field{margin-bottom:14px}
+.field:last-child{margin-bottom:0}
+select,input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;padding:12px;min-height:48px}
+input{font-variant-numeric:tabular-nums}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:10px}
+.row>*{flex:1;min-width:0}
+.unit{position:relative}
+.unit input{padding-right:48px}
+.unit span{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;pointer-events:none}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg)}
+.seg button{flex:1;font:inherit;font-size:16px;padding:12px 6px;min-height:48px;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.seg.small button{min-height:40px;font-size:14px;padding:8px 4px}
+.hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+.err{color:var(--err);font-size:14px;margin:8px 0 0;min-height:1.2em}
+.result{background:var(--panel);color:var(--panel-ink);border-radius:12px;padding:18px 16px}
+.result h2{font-size:14px;font-weight:500;margin:0 0 4px;color:var(--panel-ink);opacity:.75}
+.big{font-size:34px;font-weight:700;color:var(--num);font-variant-numeric:tabular-nums;line-height:1.2}
+.big small{font-size:18px;font-weight:500;margin-left:4px}
+.pair{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline}
+.pair .g{font-size:22px;font-weight:600;color:var(--num);font-variant-numeric:tabular-nums}
+.pair .g small{font-size:14px;margin-left:3px;font-weight:500}
+.sep{border:0;border-top:1px solid rgba(255,255,255,.18);margin:14px 0}
+.meta{font-size:13px;opacity:.7;margin:10px 0 0}
+.cta{width:100%;font:inherit;font-weight:700;padding:14px;min-height:52px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.cta:disabled{opacity:.6}
+.cta:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <h1>金屬重量計算</h1>
+
+  <section class='card' id='photo' hidden>
+    <button type='button' class='cta' id='photoBtn'>拍照讀取尺寸</button>
+    <input id='photoIn' type='file' accept='image/*' hidden>
+    <p class='hint' id='photoMsg'>拍圖面、手寫尺寸或材料標籤，讀到的數字會自動填入，請再核對一次。</p>
+  </section>
+
+  <section class="card">
+    <div class="field">
+      <label for="mat">材質</label>
+      <select id="mat"></select>
+    </div>
+    <div class="field">
+      <label for="den">比重（g/cm³，可自行修改）</label>
+      <input id="den" type="number" inputmode="decimal" step="0.01" min="0">
+      <p class="hint" id="matnote"></p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="field">
+      <label id="shapelbl">形狀</label>
+      <div class="seg" role="group" aria-labelledby="shapelbl" id="shapes"></div>
+    </div>
+    <div id="dims"></div>
+    <div class="field">
+      <label for="qty">數量</label>
+      <input id="qty" type="number" inputmode="numeric" min="1" step="1" value="1">
+    </div>
+    <p class="err" id="err" role="alert"></p>
+  </section>
+
+  <section class="result" aria-live="polite">
+    <h2>單件重量</h2>
+    <div class="pair"><span class="big" id="s-kg">0<small>kg</small></span><span class="g" id="s-g">0<small>g</small></span></div>
+    <hr class="sep">
+    <h2 id="tot-title">合計（1 件）</h2>
+    <div class="pair"><span class="big" id="t-kg">0<small>kg</small></span><span class="g" id="t-g">0<small>g</small></span></div>
+    <p class="meta" id="vol"></p>
+  </section>
+</main>
+
+<script>
+(function(){
+  var MATS=[
+    {g:"鋁",items:[["6061",2.70],["7075",2.81],["5052",2.68]]},
+    {g:"鐵、鋼",items:[["G3131",7.85],["S45C",7.85],["DC53",7.85],["SCM440",7.85],["4140",7.85],["4130",7.85],["SKD61",7.80],["SKD11",7.70]]},
+    {g:"不鏽鋼",items:[["SUS304",7.93],["SUS303",7.98],["SUS420",7.75]]},
+    {g:"銅",items:[["C6801（黃銅）",8.4]]}
+  ];
+  var SHAPES={
+    round:{name:"圓棒",fields:[["d","直徑"],["L","長度"]]},
+    tube:{name:"圓管",fields:[["D","外徑"],["t","壁厚"],["L","長度"]]},
+    plate:{name:"板材／方棒",fields:[["L","長度"],["W","寬度"],["T","厚度"]]}
+  };
+  var $=function(id){return document.getElementById(id)};
+  var state={shape:"round",tubeMode:"wall",vals:{}};
+  var store={get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},
+             set:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+  // 材質選單
+  var mat=$("mat"),flat=[];
+  MATS.forEach(function(grp){
+    var og=document.createElement("optgroup");og.label=grp.g;
+    grp.items.forEach(function(it){
+      var o=document.createElement("option");o.value=flat.length;o.textContent=it[0]+"（"+it[1].toFixed(2)+"）";
+      og.appendChild(o);flat.push(it);
+    });
+    mat.appendChild(og);
+  });
+  var savedMat=store.get("wc_mat");
+  if(savedMat!==null&&flat[savedMat])mat.value=savedMat;
+  function setDensity(){
+    var it=flat[mat.value];
+    $("den").value=it[1];
+    $("matnote").textContent=it[0].indexOf("C6801")===0?"黃銅比重請以供應商規格為準，必要時請直接修改上方數值。":"";
+    store.set("wc_mat",mat.value);
+  }
+  mat.addEventListener("change",function(){setDensity();calc()});
+  setDensity();
+
+  // 形狀按鈕
+  var sh=$("shapes");
+  Object.keys(SHAPES).forEach(function(k){
+    var b=document.createElement("button");b.type="button";b.dataset.k=k;b.textContent=SHAPES[k].name;
+    b.addEventListener("click",function(){state.shape=k;store.set("wc_shape",k);renderDims();calc()});
+    sh.appendChild(b);
+  });
+  var savedShape=store.get("wc_shape");
+  if(savedShape&&SHAPES[savedShape])state.shape=savedShape;
+
+  function field(key,label){
+    var wrap=document.createElement("div");wrap.className="field";
+    var l=document.createElement("label");l.setAttribute("for","f-"+key);l.textContent=label;
+    var u=document.createElement("div");u.className="unit";
+    var i=document.createElement("input");i.id="f-"+key;i.type="number";i.inputMode="decimal";i.step="any";i.min="0";
+    i.value=state.vals[key]||"";
+    i.addEventListener("input",function(){state.vals[key]=i.value;calc()});
+    var s=document.createElement("span");s.textContent="mm";
+    u.appendChild(i);u.appendChild(s);wrap.appendChild(l);wrap.appendChild(u);
+    return wrap;
+  }
+  function renderDims(){
+    [].forEach.call(sh.children,function(b){b.setAttribute("aria-pressed",b.dataset.k===state.shape?"true":"false")});
+    var box=$("dims");box.innerHTML="";
+    var def=SHAPES[state.shape];
+    if(state.shape==="tube"){
+      var tg=document.createElement("div");tg.className="field";
+      var l=document.createElement("label");l.textContent="內孔輸入方式";tg.appendChild(l);
+      var seg=document.createElement("div");seg.className="seg small";
+      [["wall","壁厚"],["inner","內徑"]].forEach(function(m){
+        var b=document.createElement("button");b.type="button";b.textContent=m[1];
+        b.setAttribute("aria-pressed",state.tubeMode===m[0]?"true":"false");
+        b.addEventListener("click",function(){state.tubeMode=m[0];state.vals.t="";renderDims();calc()});
+        seg.appendChild(b);
+      });
+      tg.appendChild(seg);box.appendChild(tg);
+    }
+    def.fields.forEach(function(f){
+      var label=f[1];
+      if(state.shape==="tube"&&f[0]==="t"&&state.tubeMode==="inner")label="內徑";
+      box.appendChild(field(f[0],label));
+    });
+  }
+
+  function num(k){var v=parseFloat(state.vals[k]);return isFinite(v)?v:0}
+  function fmtKg(x){return x.toLocaleString("zh-TW",{minimumFractionDigits:3,maximumFractionDigits:3})}
+  function fmtG(x){return x>=1000?Math.round(x).toLocaleString("zh-TW"):x.toLocaleString("zh-TW",{minimumFractionDigits:1,maximumFractionDigits:1})}
+  function set(id,text,unit){$(id).innerHTML=text+"<small>"+unit+"</small>"}
+
+  function calc(){
+    var err="",mm3=0,s=state.shape;
+    if(s==="round"){mm3=Math.PI/4*num("d")*num("d")*num("L")}
+    else if(s==="plate"){mm3=num("L")*num("W")*num("T")}
+    else{
+      var D=num("D"),inner=state.tubeMode==="inner"?num("t"):D-2*num("t");
+      if(D>0&&state.vals.t!==""&&state.vals.t!==undefined){
+        if(inner<0||inner>=D){err=state.tubeMode==="inner"?"內徑必須小於外徑。":"壁厚必須小於外徑的一半。";inner=D}
+      }
+      mm3=Math.PI/4*(D*D-inner*inner)*num("L");
+      if(!(inner>=0&&inner<=D))mm3=0;
+    }
+    var q=parseInt($("qty").value,10);if(!(q>=1))q=1;
+    var den=parseFloat($("den").value);
+    if(!(den>0)){err=err||"請輸入比重。";den=0}
+    var cm3=mm3/1000,g=cm3*den,tg=g*q;
+    set("s-kg",fmtKg(g/1000),"kg");set("s-g",fmtG(g),"g");
+    set("t-kg",fmtKg(tg/1000),"kg");set("t-g",fmtG(tg),"g");
+    $("tot-title").textContent="合計（"+q+" 件）";
+    $("vol").textContent=cm3>0?"單件體積 "+cm3.toLocaleString("zh-TW",{maximumFractionDigits:2})+" cm³":"";
+    $("err").textContent=err;
+  }
+
+  $("den").addEventListener("input",calc);
+  $("qty").addEventListener("input",calc);
+  var sampler=null,photo=$('photo'),pmsg=$('photoMsg'),pbtn=$('photoBtn'),pin=$('photoIn');
+  (async function(){try{if(!window.claude)return;var s=await claude.use('sample');if(!s)return;var lim=await s.limits();if(!lim||!lim.images)return;sampler=s;photo.hidden=false}catch(e){}})();
+  pbtn.addEventListener('click',function(){pin.click()});
+  function shrink(file){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var r=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);c.toBlob(function(b){b?res(b):rej()},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej()};img.src=url})}
+  var PROMPT='這張照片是機械加工的材料資料：可能是圖面、手寫尺寸或材料標籤。請讀出材料形狀與尺寸。只輸出一個 JSON 物件，欄位為 shape（round 圓棒、tube 圓管、plate 板材或方棒，看不出來填 null）、material（材質名稱，例如 S45C，沒有填 null）、d（圓棒直徑）、D（圓管外徑）、t（圓管壁厚）、inner（圓管內徑）、L（長度）、W（寬度）、T（厚度）、qty（數量）、note（一句話說明不確定或可疑之處，沒有填空字串）。尺寸一律換算成 mm 的數字；照片上沒寫的欄位填 null；不要猜測，也不要自行計算。板材或方棒用 L 長、W 寬、T 厚。';
+  var ERR={not_granted:'你沒有允許使用 Claude，所以無法讀取照片。',rate_limited:'使用次數太多，請稍後再試。',session_expired:'請重新登入 Claude 後再試。',image_rejected:'這張照片無法讀取，請換一張。',refused:'這張照片無法讀取，請換一張。',invalid_json:'讀取結果格式不對，請再拍一次。',empty_completion:'沒有讀到內容，請拍清楚一點再試。'};
+  function pn(v){return typeof v==='number'&&v>0?String(v):''}
+  function applyRead(r){
+    if(r.material){var up=String(r.material).toUpperCase().replace(/\s/g,'');for(var i=0;i<flat.length;i++){var nm=flat[i][0].split('（')[0].toUpperCase();if(up.indexOf(nm)>-1){mat.value=i;setDensity();break}}}
+    if(r.shape&&SHAPES[r.shape])state.shape=r.shape;
+    if(state.shape==='round')state.vals={d:pn(r.d),L:pn(r.L)};
+    else if(state.shape==='plate')state.vals={L:pn(r.L),W:pn(r.W),T:pn(r.T)};
+    else{state.vals={D:pn(r.D),L:pn(r.L)};if(pn(r.t)){state.tubeMode='wall';state.vals.t=pn(r.t)}else if(pn(r.inner)){state.tubeMode='inner';state.vals.t=pn(r.inner)}}
+    if(r.qty>=1)$('qty').value=Math.round(r.qty);
+    store.set('wc_shape',state.shape);renderDims();calc();
+    pmsg.textContent='已讀取'+SHAPES[state.shape].name+'的資料，請核對下方數字是否正確。'+(r.note?'注意：'+r.note:'');
+  }
+  pin.addEventListener('change',async function(){
+    var f=pin.files&&pin.files[0];pin.value='';if(!f||!sampler)return;
+    pbtn.disabled=true;pmsg.textContent='讀取中，請稍候…';
+    try{var blob=await shrink(f);var r=await sampler.json(PROMPT,{images:[blob],modelTier:'default'});applyRead(r||{})}
+    catch(e){pmsg.textContent=ERR[e&&e.code]||'讀取失敗，請再試一次。'}
+    finally{pbtn.disabled=false}
+  });
+  renderDims();calc();
+})();
+</script>
+</body>
+</html>
